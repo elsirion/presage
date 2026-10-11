@@ -968,3 +968,68 @@ impl BoundExt for Bound<&u64> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use presage::{
+        libsignal_service::protocol::Aci,
+        model::{contacts::Contact, identity::OnNewIdentity},
+        store::{ContentsStore, Thread},
+    };
+
+    use super::*;
+
+    /// A stored contact with the timer at `(timer, version)`, and its thread.
+    async fn contact_with_timer(timer: u32, version: u32) -> (SqliteStore, Thread) {
+        let mut store = SqliteStore::open(":memory:", OnNewIdentity::Trust)
+            .await
+            .expect("store");
+        let mut contact = Contact::minimal(Uuid::from_u128(1));
+        contact.expire_timer = timer;
+        contact.expire_timer_version = version;
+        store.save_contact(&contact).await.expect("save contact");
+        let thread = Thread::Contact(Aci::from(contact.uuid).into());
+        (store, thread)
+    }
+
+    #[tokio::test]
+    async fn expire_timer_at_the_stored_version_is_applied() {
+        // A contact's first timer change carries version 2, the version a contact
+        // starts at; dropping it left the timer off and sends turned it off.
+        let (mut store, thread) = contact_with_timer(0, 2).await;
+        store
+            .update_expire_timer(&thread, 2_419_200, 2)
+            .await
+            .expect("update");
+        assert_eq!(
+            store.expire_timer(&thread).await.expect("timer"),
+            Some((2_419_200, 2))
+        );
+    }
+
+    #[tokio::test]
+    async fn expire_timer_at_a_newer_version_is_applied() {
+        let (mut store, thread) = contact_with_timer(3600, 4).await;
+        store
+            .update_expire_timer(&thread, 0, 5)
+            .await
+            .expect("update");
+        assert_eq!(
+            store.expire_timer(&thread).await.expect("timer"),
+            Some((0, 5))
+        );
+    }
+
+    #[tokio::test]
+    async fn expire_timer_at_an_older_version_is_ignored() {
+        let (mut store, thread) = contact_with_timer(3600, 4).await;
+        store
+            .update_expire_timer(&thread, 0, 3)
+            .await
+            .expect("update");
+        assert_eq!(
+            store.expire_timer(&thread).await.expect("timer"),
+            Some((3600, 4))
+        );
+    }
+}

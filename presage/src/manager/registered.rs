@@ -3827,7 +3827,7 @@ async fn register_pre_keys<S: Store>(
 /// The `expire_timer_version` to keep after a first-sight profile fetch: the incoming one
 /// when it is newer, otherwise whatever is already stored. Never lower than `stored`.
 ///
-/// `Store::update_expire_timer` resolves conflicts with `version <= current_version`, so
+/// `Store::update_expire_timer` drops updates with `version < current_version`, so
 /// writing a smaller number here lets a stale update win later. Signal-Desktop hands the
 /// incoming version straight to its version-gated setter (`handleDataMessage`) rather than
 /// substituting a default; presage defaulted an absent version to 1, which downgraded every
@@ -4123,7 +4123,7 @@ mod tests {
 
     #[test]
     fn stale_expire_timer_version_is_ignored() {
-        // The downgrade that broke `update_expire_timer`'s `version <= current_version`
+        // The downgrade that broke `update_expire_timer`'s `version < current_version`
         // conflict resolution: a later stale update would have been accepted over this.
         assert_eq!(merged_expire_timer_version(Some(2), 7), 7);
     }

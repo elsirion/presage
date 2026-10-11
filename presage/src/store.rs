@@ -504,8 +504,12 @@ pub trait ContentsStore: Send + Sync {
                 Thread::Contact(uuid) => {
                     let contact = self.contact_by_id(uuid).await?;
                     if let Some(mut contact) = contact {
+                        // Like the Signal apps, only an older version loses: an equal one
+                        // still carries the timer. Contacts start at version 2, the version
+                        // the first timer change produces, so rejecting equal versions never
+                        // recorded that change, and messages sent from here turned it off.
                         let current_version = contact.expire_timer_version;
-                        if version <= current_version {
+                        if version < current_version {
                             return Ok(());
                         }
                         contact.expire_timer_version = version;
